@@ -110,6 +110,9 @@ class MainActivity : ComponentActivity() {
 
     private fun init() {
         images = ArrayList<GridModal>()
+        val number = 100
+        val evenOrNull = number?.takeUnless { it % 2 == 0 }
+        println("even: $evenOrNull")
         //learnCoroutines()
         //touchListener()
     }

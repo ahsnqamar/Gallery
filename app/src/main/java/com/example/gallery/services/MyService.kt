@@ -1,5 +1,6 @@
 package com.example.gallery.services
 
+import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -7,15 +8,24 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
+import android.view.View
 import android.widget.SeekBar
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.example.gallery.MPlayer
 import com.example.gallery.MainActivity2
 import com.example.gallery.R
+import com.example.gallery.viewmodals.MusicPlayerViewModel
+import java.io.File
+import java.lang.Exception
 
 
 interface MusicPlayerCallback {
@@ -23,8 +33,9 @@ interface MusicPlayerCallback {
 }
 
 class MyService: Service() {
-    private lateinit var player: MediaPlayer
 
+
+    private lateinit var player: MediaPlayer
     private var currentTime: Int ?= null
     private var endTime: Int ?= null
     private var musicPlayerCallback: MusicPlayerCallback? = null
@@ -46,22 +57,47 @@ class MyService: Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        player = MediaPlayer.create(this,R.raw.song)
-        player.isLooping = true
-        if (!player.isPlaying)
-            player.start()
+
+//        val filename: String = "android.resource://" + this.packageName + "/raw/song"
+        player = MusicPlayerViewModel.Player.getMediaPlayer()
+//        try {
+//            player.setDataSource(this, Uri.parse(filename))
+//        }
+//        catch (e: Exception){
+//            println("e: $e")
+//        }
+//
+//        try {
+//            player.prepare()
+//        }catch (e: Exception){
+//            println("exception: $e")
+//        }
+        println("player $player")
+//        player.start()
+//
+//
+//        player.isLooping = true
+//        if (!player.isPlaying)
+//            player.start()
+
         currentTime = player.currentPosition
         endTime = player.duration
 
 
-        //println("Time: $endTime")
-        //sendData()
+        println("Time: $endTime")
+        sendData()
         handler.postDelayed(updateRunnable,1000)
 
-        //musicPlayerCallback?.onCurrentTimeChanged(currentTime = currentTime!!.toLong())
+        musicPlayerCallback?.onCurrentTimeChanged(currentTime = currentTime!!.toLong())
         sendNotification()
         return START_STICKY
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        player.stop()
+    }
+
 
     private fun handleSeekBar(): Int {
         seekBar = SeekBar(this)
@@ -93,13 +129,13 @@ class MyService: Service() {
         return (maxDuration * (progress.toFloat() / seekBar.max)).toInt()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        player.stop()
-    }
+
 
     override fun onCreate() {
         super.onCreate()
+        println("on create")
+
+
 
     }
 
@@ -122,7 +158,7 @@ class MyService: Service() {
     private val handler = Handler()
     private val updateRunnable = object : Runnable {
         override fun run() {
-            sendData()
+            //sendData()
             handler.postDelayed(this, 1000)
         }
     }

@@ -5,19 +5,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.MediaPlayer
+import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
 import android.widget.Toast
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModel
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.work.Constraints
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.gallery.databinding.ActivityMain2Binding
 import com.example.gallery.services.MyService
+import com.example.gallery.viewmodals.MusicPlayerViewModel
 import com.example.gallery.worker.MyWork
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.lang.Exception
 import java.util.concurrent.TimeUnit
 
 //, MusicPlayerCallback
@@ -26,12 +35,16 @@ class MainActivity2 : AppCompatActivity() {
 
     private lateinit var binding: ActivityMain2Binding
     private var myService: MyService? = null
+    private lateinit var player: MediaPlayer
+    private var viewModel: MusicPlayerViewModel.Player = MusicPlayerViewModel.Player
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMain2Binding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        println("on create")
 
         // Bind to the Service
         //val serviceIntent = Intent(this, MyService::class.java)
@@ -43,7 +56,7 @@ class MainActivity2 : AppCompatActivity() {
         //receiveBroadcast()
         val filter = IntentFilter("MusicData")
         LocalBroadcastManager.getInstance(this).registerReceiver(musicProgress, filter)
-        musicProgress
+        //musicProgress
     }
 
     override fun onResume() {
@@ -71,7 +84,7 @@ class MainActivity2 : AppCompatActivity() {
                         progress: Int,
                         fromUser: Boolean
                     ) {
-
+                        //player.seekTo(progress)
                     }
 
                     override fun onStartTrackingTouch(seekBar: SeekBar?) {
@@ -97,31 +110,54 @@ class MainActivity2 : AppCompatActivity() {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(time.toLong())
         val seconds = TimeUnit.MILLISECONDS.toSeconds(time.toLong()) -
                 TimeUnit.MINUTES.toSeconds(minutes)
-        val milliseconds = time % 1000
+
 
         return String.format("%02d:%02d", minutes, seconds)
     }
 
 
 
+
     private fun initListener() {
         //var isPlaying = false
         var isClicked = false
+        val filename: String = "android.resource://" + this.packageName + "/raw/song"
+        player = MusicPlayerViewModel.Player.getMediaPlayer()
+        try {
+            player.setDataSource(this, Uri.parse(filename))
+        }
+        catch (e: Exception){
+            println("e: $e")
+        }
+
+        try {
+            player.prepare()
+        }catch (e: Exception){
+            println("exception: $e")
+        }
+        println("player main $player")
+
+
         binding.play.setOnClickListener {
 
             if (isClicked) {
                 // pause the music
+
                 binding.play.setImageResource(R.drawable.play)
-                stopService(Intent(this, MyService::class.java))
+                //stopService(Intent(this, MyService::class.java))
+                player.stop()
                 isClicked = false
                 //isPlaying = false
             } else {
                 // play the music
                 binding.play.setImageResource(R.drawable.pause)
-                startService(Intent(this, MyService::class.java))
+                //startService(Intent(this, MyService::class.java))
+                player.start()
+                //player.isLooping = true
                 isClicked = true
                 //isPlaying = true
             }
+
 
         }
 
@@ -140,11 +176,29 @@ class MainActivity2 : AppCompatActivity() {
                 Toast.makeText(this, "status $status", Toast.LENGTH_SHORT).show()
             })
 
+        binding.sw1.setOnCheckedChangeListener { _, isChecked ->
+            val message = if (isChecked) "switch: On" else "switch: Off"
+            if (isChecked) {
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+                //binding.imageView.setColorFilter(R.color.purple_200)
+            }
+            else{
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+            }
+            //Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+
+        binding.next.setOnClickListener {
+            startActivity(Intent(this, NotesActivity::class.java))
+        }
+
     }
 
 
     override fun onDestroy() {
         super.onDestroy()
+        //player.stop()
+        //player.release()
         stopService(Intent(this, MyService::class.java))
     }
 

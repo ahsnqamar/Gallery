@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="cardStyle">
+        <item name="cardElevation">20dp</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="cardBackgroundColor">@color/white</item>
+        <item name="android:backgroundTint">@color/white</item>
+        <item name="cardCornerRadius">16dp</item>
+        <item name="contentPadding">16dp</item>
+    </style>
+
+    <style name="cardMarginStyle">
+        <item name="android:layout_marginVertical" tools:targetApi="o">4dp</item>
+    </style>
+    
+</resources>

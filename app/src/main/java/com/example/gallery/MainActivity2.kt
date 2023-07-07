@@ -192,6 +192,14 @@ class MainActivity2 : AppCompatActivity() {
             startActivity(Intent(this, NotesActivity::class.java))
         }
 
+        binding.settings.setOnClickListener {
+            startActivity(Intent(this,SettingsActivity::class.java))
+        }
+
+        binding.imageApp.setOnClickListener {
+            startActivity(Intent(this,ImageActivity::class.java))
+        }
+
     }
 
 

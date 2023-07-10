@@ -21,6 +21,8 @@ import com.example.gallery.MainActivity2
 import com.example.gallery.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -29,7 +31,6 @@ import java.util.Calendar
 class StepCounter : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
-    //private var initialStepCount = -1
     private var initialStepCount :Int ?= null
     private var steps = 0
     private var distance: Double = 0.0
@@ -45,7 +46,7 @@ class StepCounter : Service(), SensorEventListener {
         val sensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
 
         if (sensor != null) {
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
         } else{
             println("Sensor not found")
         }
@@ -77,99 +78,66 @@ class StepCounter : Service(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent?) {
         println("5")
 
-        CoroutineScope(Dispatchers.IO).launch {
-//            val sensorStepCount = event?.values?.firstOrNull()
-//            sensorStepCount?.let {
-//
-//                val originalSteps = it.toInt()
-//                println("original steps: $originalSteps")
-//
-//                if (initialStepCount < 0) {
-//                    initialStepCount = it.toInt()
-//                    println("initial steps: $initialStepCount")
-//                }
-//                steps = it.toInt() - initialStepCount
-//
-//                distance = getDistance(steps.toDouble())
-//
-//                // Data 2: The number of nanosecond passed since the time of last boot
-//                val lastDeviceBootTimeInMillis =
-//                    System.currentTimeMillis() - SystemClock.elapsedRealtime()
-//                val sensorEventTimeInNanos =
-//                    event.timestamp // The number of nanosecond passed since the time of last boot
-//                val sensorEventTimeInMillis = sensorEventTimeInNanos.div(1000_000)
-//
-//                val actualSensorEventTimeInMillis =
-//                    lastDeviceBootTimeInMillis + sensorEventTimeInMillis
-//                date = SimpleDateFormat("dd/MM/yyyy hh:mm:ss").format(actualSensorEventTimeInMillis)
-//
-//                caloriesBurned = calculateCaloriesBurned()
-//
-//                sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
-//                sharedPreferences.edit().apply {
-//                    putInt("steps", steps)
-//                    putFloat("distance", distance.toFloat())
-//                    putString("date", date)
-//                    putFloat("calories", caloriesBurned.toFloat())
-//                    apply()
-//                }
-//
-//                println("steps coroutines $steps, distance $distance, date $date, calories $caloriesBurned")
-//                withContext(Dispatchers.Main){
-//                    sendBroadcast(applicationContext, steps, distance, date, caloriesBurned)
-//                }
-//
-//            }
+        GlobalScope.launch {
+            withContext(Dispatchers.IO){
+                val sensorStepCount = event?.values?.firstOrNull()?.toInt()
 
-            val sensorStepCount = event?.values?.firstOrNull()?.toInt()
+                sensorStepCount.let {
+                    val originalSteps = it
+                    println("original steps: $originalSteps")
 
-            sensorStepCount.let {
-                val originalSteps = it
-                println("original steps: $originalSteps")
+                    if (initialStepCount == null) {
+                        initialStepCount = it
+                        println("initial steps: $initialStepCount")
+                    }
 
-                if (initialStepCount == null) {
-                    initialStepCount = it
-                    println("initial steps: $initialStepCount")
-                }
+                    if (it !! >= initialStepCount!!){
+                        steps = it - initialStepCount!!
+                    } else {
+                        initialStepCount = it
+                        steps = 0
+                    }
+                    println("steps: $steps")
+                    distance = getDistance(steps.toDouble())
 
-                if (it !! >= initialStepCount!!){
-                    steps = it - initialStepCount!!
-                } else {
-                    initialStepCount = it
-                    steps = 0
-                }
-                println("steps: $steps")
-                distance = getDistance(steps.toDouble())
+                    // Data 2: The number of nanosecond passed since the time of last boot
+                    val value = async {
+                        val lastDeviceBootTimeInMillis =
+                            System.currentTimeMillis() - SystemClock.elapsedRealtime()
+                        val sensorEventTimeInNanos =
+                            event?.timestamp // The number of nanosecond passed since the time of last boot
+                        val sensorEventTimeInMillis = sensorEventTimeInNanos?.div(1000_000)
 
-                // Data 2: The number of nanosecond passed since the time of last boot
-                val lastDeviceBootTimeInMillis =
-                    System.currentTimeMillis() - SystemClock.elapsedRealtime()
-                val sensorEventTimeInNanos =
-                    event?.timestamp // The number of nanosecond passed since the time of last boot
-                val sensorEventTimeInMillis = sensorEventTimeInNanos?.div(1000_000)
+                        val actualSensorEventTimeInMillis =
+                            lastDeviceBootTimeInMillis + sensorEventTimeInMillis!!
+                        actualSensorEventTimeInMillis
+                    }
 
-                val actualSensorEventTimeInMillis =
-                    lastDeviceBootTimeInMillis + sensorEventTimeInMillis!!
-                date = SimpleDateFormat("dd/MM/yyyy hh:mm:ss").format(actualSensorEventTimeInMillis)
+                    date = SimpleDateFormat("dd/MM/yyyy hh:mm:ss").format(value.await())
 
-                caloriesBurned = calculateCaloriesBurned()
+                    val calBurned = async {
+                        calculateCaloriesBurned()
+                    }
+                    caloriesBurned = calBurned.await()
 
-                sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
-                sharedPreferences.edit().apply {
-                    putInt("steps", steps)
-                    putFloat("distance", distance.toFloat())
-                    putString("date", date)
-                    putFloat("calories", caloriesBurned.toFloat())
-                    apply()
-                }
+                    sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
+                    sharedPreferences.edit().apply {
+                        putInt("steps", steps)
+                        putFloat("distance", distance.toFloat())
+                        putString("date", date)
+                        putFloat("calories", caloriesBurned.toFloat())
+                        apply()
+                    }
 
-                println("steps coroutines $steps, distance $distance, date $date, calories $caloriesBurned")
-                withContext(Dispatchers.Main){
-                    sendBroadcast(applicationContext, steps, distance, date, caloriesBurned)
+                    println("steps coroutines $steps, distance $distance, date $date, calories $caloriesBurned")
+                    withContext(Dispatchers.Main){
+                        sendBroadcast(applicationContext, steps, distance, date, caloriesBurned)
+                    }
                 }
             }
 
         }
+
 
     }
 

@@ -200,6 +200,10 @@ class MainActivity2 : AppCompatActivity() {
             startActivity(Intent(this,ImageActivity::class.java))
         }
 
+        binding.googleFit.setOnClickListener {
+            startActivity(Intent(this,FitActivity::class.java))
+        }
+
     }
 
 

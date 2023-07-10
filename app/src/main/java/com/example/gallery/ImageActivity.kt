@@ -53,8 +53,6 @@ class ImageActivity : AppCompatActivity() {
         getPermission(android.Manifest.permission.ACTIVITY_RECOGNITION)
 
 
-
-
         viewModel = ViewModelProvider(this)[StepCounterViewModel::class.java]
 
         viewModel.stepCountLiveData.observe(this) { stepCount ->

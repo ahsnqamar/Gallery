@@ -24,6 +24,9 @@ class StepCounterViewModel : ViewModel() {
     private val _caloriesBurnedLiveData = MutableLiveData<Double>()
     val caloriesBurnedLiveData: LiveData<Double> get() = _caloriesBurnedLiveData
 
+    private val _totalMoveMinutesLiveData = MutableLiveData<Int>()
+    val totalMoveMinutesLiveData: LiveData<Int> get() = _totalMoveMinutesLiveData
+
     fun updateStepCount(stepCount: Int) {
         _stepCountLiveData.value = stepCount
     }
@@ -39,4 +42,9 @@ class StepCounterViewModel : ViewModel() {
     fun updateCaloriesBurned(caloriesBurned: Double) {
         _caloriesBurnedLiveData.value = caloriesBurned
     }
+
+    fun updateTotalMoveMinutes(totalMoveMinutes: Int) {
+        _totalMoveMinutesLiveData.value = totalMoveMinutes
+    }
+
 }

@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit
 import com.google.android.gms.fitness.request.OnDataPointListener
 import com.google.android.gms.fitness.request.SensorRequest
 import com.google.android.gms.tasks.Tasks
+import java.text.DecimalFormat
 import kotlin.math.roundToInt
 
 class FitActivity : AppCompatActivity() {
@@ -43,12 +44,15 @@ class FitActivity : AppCompatActivity() {
     private var totalDistance = 0f
     private lateinit var binding: ActivityFitBinding
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var  decimalFormat : DecimalFormat
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityFitBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        decimalFormat = DecimalFormat("#.##")
 
         sharedPreferences = getSharedPreferences("sharedPrefs", MODE_PRIVATE)
         totalSteps = sharedPreferences.getInt("steps", 0)
@@ -272,10 +276,10 @@ class FitActivity : AppCompatActivity() {
         super.onPause()
 
         val editor = sharedPreferences.edit().apply {
-            println("share pref set steps: $totalSteps + distance: $totalDistance")
+            println("share pref set steps: $totalSteps + distance: $totalDistance + calories: $totalCalories")
             putInt("steps", totalSteps)
-            putFloat("distance", totalDistance)
-            putFloat("calories", totalCalories)
+            putFloat("distance", decimalFormat.format(totalDistance).toFloat())
+            putFloat("calories", decimalFormat.format(totalCalories).toFloat())
         }
         editor.apply()
     }
@@ -288,8 +292,8 @@ class FitActivity : AppCompatActivity() {
         val calories = sharedPreferences.getFloat("calories", 0f)
         println("steps $steps")
         binding.tvStepCount.text = steps.toString()
-        binding.tvDistance.text = distance.toString()
-        binding.tvCalories.text = calories.toString()
+        binding.tvDistance.text = decimalFormat.format(distance)
+        binding.tvCalories.text = decimalFormat.format(calories)
     }
 
 
@@ -312,12 +316,12 @@ class FitActivity : AppCompatActivity() {
         endTime.set(Calendar.MINUTE, 59)
         endTime.set(Calendar.SECOND, 59)
 
-        val googleApi = GoogleApiAvailability.getInstance()
-        googleApi.isGooglePlayServicesAvailable(this)
-
-        GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .silentSignIn()
-            .result as GoogleSignInAccount
+//        val googleApi = GoogleApiAvailability.getInstance()
+//        googleApi.isGooglePlayServicesAvailable(this)
+//
+//        GoogleSignIn.getClient(this, GoogleSignInOptions.DEFAULT_SIGN_IN)
+//            .silentSignIn()
+//            .result as GoogleSignInAccount
 
         val distanceRequest = DataReadRequest.Builder()
             .setTimeRange(startTime.timeInMillis, endTime.timeInMillis, TimeUnit.MILLISECONDS)
@@ -345,34 +349,67 @@ class FitActivity : AppCompatActivity() {
                 val distances = distanceDataSet?.dataPoints
                 val calories = caloriesDataSet?.dataPoints
 
+                println("distances: $distances")
+
+                if (distances.isNullOrEmpty() || calories.isNullOrEmpty()) {
+                    println("distances or calories is null or empty")
+                    getDistanceInKm(stepCount = totalSteps)
+                    getCaloriesBurned(stepCount = totalSteps)
+
+                    return@addOnSuccessListener
+                }
+
                 for (distance in distances!!) {
                     for (field in distance.dataType.fields) {
-                        val distanceInKm = distance.getValue(field).asFloat().div(1000)
-                        val formattedDistance = String.format("%.2f", distanceInKm)
-                        totalDistance +=  formattedDistance.toFloat()
-                        println("total distance: $totalDistance")
-                        binding.tvDistance.text = formattedDistance
+                        println("distance: $distance")
+                        distance.dataType.fields.forEach {
+                            println("field: $it")
+                        }
+                        val distanceInM = distance.getValue(field).asFloat()
+                        println("distance in m: $distanceInM")
+                        val distanceInKm = distanceInM.div(1000)
                         println("distance in km: $distanceInKm")
+                        totalDistance = 0f
+                        totalDistance += distanceInKm
+                        println("total distance: $totalDistance")
 
+                        binding.tvDistance.text = decimalFormat.format(totalDistance)
                     }
                 }
 
                 for (calorie in calories!!) {
                     for (field in calorie.dataType.fields) {
-                        val kCal = calorie.getValue(field).asFloat().div(1000)
-                        val formattedCalories = String.format("%.2f", kCal)
-                        totalCalories += formattedCalories.toFloat()
-                        binding.tvCalories.text = formattedCalories
-                        println("calories burned: $kCal")
+                        val cal = calorie.getValue(field).asFloat()
+                        val kCal = cal.div(1000)
+                        totalCalories += kCal
+                        binding.tvCalories.text = decimalFormat.format(totalCalories)
                     }
                 }
             }
             .addOnFailureListener { e ->
                 println("failed to get calories burned: $e")
             }
+    }
 
+    private fun getDistanceInKm(stepCount: Int) {
+        val height = 1.7
+        val stepLength = height * 0.415
+        val distance = stepLength * stepCount
+        println("distance: $distance")
+        val distanceInKm = distance.div(1000)
+        totalDistance += distanceInKm.toFloat()
+        println("total distance: $totalDistance")
+        binding.tvDistance.text = decimalFormat.format(totalDistance)
+        //return distance.toFloat()
+    }
 
-
+    private fun getCaloriesBurned(stepCount: Int) {
+        val caloriesBurned = stepCount * 0.04
+        println("calories burned: $caloriesBurned")
+        totalCalories += caloriesBurned.toFloat()
+        println("total calories: $totalCalories")
+        binding.tvCalories.text = decimalFormat.format(totalCalories)
+        //return caloriesBurned.toFloat()
     }
 
 }

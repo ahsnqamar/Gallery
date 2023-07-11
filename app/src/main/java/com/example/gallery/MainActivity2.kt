@@ -15,6 +15,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.work.Constraints
 import androidx.work.OneTimeWorkRequestBuilder
@@ -22,6 +23,7 @@ import androidx.work.WorkManager
 import com.example.gallery.databinding.ActivityMain2Binding
 import com.example.gallery.services.MyService
 import com.example.gallery.viewmodals.MusicPlayerViewModel
+import com.example.gallery.viewmodals.StepCounterViewModel
 import com.example.gallery.worker.MyWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ class MainActivity2 : AppCompatActivity() {
     private var myService: MyService? = null
     private lateinit var player: MediaPlayer
     private var viewModel: MusicPlayerViewModel.Player = MusicPlayerViewModel.Player
+    private lateinit var stepViewModel: StepCounterViewModel
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +48,8 @@ class MainActivity2 : AppCompatActivity() {
         setContentView(binding.root)
 
         println("on create")
+
+
 
         // Bind to the Service
         //val serviceIntent = Intent(this, MyService::class.java)
@@ -249,6 +254,12 @@ class MainActivity2 : AppCompatActivity() {
 //            myService = null
 //        }
 //    }
+
+
+
+
+
+
 
 
 }

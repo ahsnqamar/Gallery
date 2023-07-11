@@ -1,6 +1,8 @@
 package com.example.gallery
 
 import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -18,6 +20,7 @@ import android.preference.PreferenceManager
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.preferencesDataStore
@@ -32,6 +35,7 @@ import com.example.gallery.viewmodals.StepCounterViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.prefs.Preferences
 
@@ -41,8 +45,9 @@ class ImageActivity : AppCompatActivity() {
     private lateinit var binding: ActivityImageBinding
     private lateinit var viewModel: StepCounterViewModel
     private lateinit var sharedPreferences: SharedPreferences
-
-
+    private var goal = 100
+    private var notificationSendCount = 0
+    private lateinit var  decimalFormat : DecimalFormat
 
     @RequiresApi(Build.VERSION_CODES.Q)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,8 +55,11 @@ class ImageActivity : AppCompatActivity() {
         binding = ActivityImageBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        getPermission(android.Manifest.permission.ACTIVITY_RECOGNITION)
+        sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
 
+        decimalFormat = DecimalFormat("#.##")
+
+        getPermission(android.Manifest.permission.ACTIVITY_RECOGNITION)
 
         viewModel = ViewModelProvider(this)[StepCounterViewModel::class.java]
 
@@ -68,6 +76,12 @@ class ImageActivity : AppCompatActivity() {
         viewModel.caloriesBurnedLiveData.observe(this) { calories ->
             binding.textView6.text = calories.toString()
         }
+        viewModel.totalMoveMinutesLiveData.observe(this) { moveMinutes ->
+            binding.textView7.text = "$moveMinutes minutes"
+        }
+
+
+        binding.progressBar.max = goal
 
 
 
@@ -77,10 +91,8 @@ class ImageActivity : AppCompatActivity() {
                 val intent = Intent(this@ImageActivity, StepCounter::class.java)
                 startService(intent)
             }
-
             val intentFilter = IntentFilter("com.example.STEPS_COUNT")
             LocalBroadcastManager.getInstance(this@ImageActivity).registerReceiver(broadcastReceiver, intentFilter)
-
         }
 //        val request = OneTimeWorkRequestBuilder<StepsCount>().build()
 //        WorkManager.getInstance(this).enqueue(request)
@@ -91,11 +103,12 @@ class ImageActivity : AppCompatActivity() {
         super.onResume()
         viewModel = ViewModelProvider(this)[StepCounterViewModel::class.java]
 
-        sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
+
         val s = sharedPreferences.getInt("steps", 0)
         val d = sharedPreferences.getFloat("distance", 0.0f)
         val da = sharedPreferences.getString("date", "")
         val c = sharedPreferences.getFloat("calories", 0.0f)
+        val m = sharedPreferences.getInt("move_minutes", 0)
 
         println("sharedPreferences: $s, $d, $da, $c")
 
@@ -103,7 +116,9 @@ class ImageActivity : AppCompatActivity() {
         viewModel.updateDistance(d.toDouble())
         viewModel.updateDate(da!!)
         viewModel.updateCaloriesBurned(c.toDouble())
+        viewModel.updateTotalMoveMinutes(m)
 
+        binding.progressBar.progress = s
 
     }
 
@@ -123,34 +138,60 @@ class ImageActivity : AppCompatActivity() {
             val distance = intent?.getDoubleExtra("distance", 0.0)
             val date = intent?.getStringExtra("date")
             val caloriesBurned = intent?.getDoubleExtra("calories", 0.0)
-            println("at receiver: $steps, $distance, $date, $caloriesBurned")
-            val distanceInMeters = "%.2f".format(distance)
-
-
-
-
-
-
+            val moveMinutes = intent?.getIntExtra("moveMinutes", 0)
+            println("at receiver: $steps, $distance, $date, $caloriesBurned, $moveMinutes")
+            //val distanceInKm = distance?.div(1000)
 
             viewModel.updateStepCount(steps!!)
-            viewModel.updateDistance(distance!!)
+            viewModel.updateDistance(decimalFormat.format(distance!!).toDouble())
             viewModel.updateDate(date!!)
             viewModel.updateCaloriesBurned(caloriesBurned!!)
+            viewModel.updateTotalMoveMinutes(moveMinutes!!)
 
-//            viewModel.updateStepCount(s )
-//            viewModel.updateDistance(d.toDouble() )
-//            viewModel.updateDate(da!!)
-//            viewModel.updateCaloriesBurned(c.toDouble() )
+            binding.progressBar.progress = steps
+
+            calculatePercentage()
+
+            if (steps >= goal && notificationSendCount == 0){
+                createNotification("Goal Achieved", "You have achieved your goal of $goal steps")
+                notificationSendCount++
+            }
+
 
         }
     }
 
-
-
+    private fun calculatePercentage(){
+        val steps = viewModel.stepCountLiveData.value
+        val percentage = (steps!! * 100) / goal
+        binding.percentage.text = "$percentage%"
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(broadcastReceiver)
     }
+
+    fun createNotification(title: String = "Notification Title", description: String = "Notification", smallIcon:Int = R.drawable.ic_launcher_background) {
+
+        val notificationManager =
+            applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationChannel =
+                NotificationChannel("101", "channel", NotificationManager.IMPORTANCE_DEFAULT)
+            notificationManager.createNotificationChannel(notificationChannel)
+        }
+
+        val notificationBuilder = NotificationCompat.Builder(applicationContext, "101")
+            .setContentTitle(title)
+            .setContentText(description)
+            .setSmallIcon(smallIcon)
+
+        notificationManager.notify(1, notificationBuilder.build())
+        println("Notified")
+
+    }
+
 
 }

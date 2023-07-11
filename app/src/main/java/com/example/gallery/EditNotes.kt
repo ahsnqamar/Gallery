@@ -31,6 +31,5 @@ class EditNotes : AppCompatActivity() {
         resultIntent.putExtra("text",notesText.toString())
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
-
     }
 }

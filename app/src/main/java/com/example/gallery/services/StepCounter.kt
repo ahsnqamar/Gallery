@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -15,10 +17,16 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.room.Room
 import com.example.gallery.MainActivity2
 import com.example.gallery.R
+import com.example.gallery.models.Steps
+import com.example.gallery.receivers.TimeReceiver
+import com.example.gallery.room.StepsDB
+import com.example.gallery.viewmodals.StepCounterViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -26,17 +34,26 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.time.LocalTime
 import java.util.Calendar
+import java.util.Timer
+import java.util.TimerTask
 
 class StepCounter : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var initialStepCount :Int ?= null
-    private var steps = 0
+    private var steps: Int = 0
     private var distance: Double = 0.0
     private var date: String = ""
     private var caloriesBurned: Double = 0.0
     private lateinit var sharedPreferences: SharedPreferences
+
+    //private var lastMovementTime: Long = 0
+    private var moveStartTime = 0L
+    private var totalMoveMinutes: Int = 0
+    private val MOVE_MINUTES_THRESHOLD: Long = 1 * 60 * 1000
+    private lateinit var stepViewModel: StepCounterViewModel
 
     override fun onCreate() {
         println("1")
@@ -44,6 +61,11 @@ class StepCounter : Service(), SensorEventListener {
 
         sensorManager = applicationContext.getSystemService(SENSOR_SERVICE) as SensorManager
         val sensor: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
+
+
+
+        stepViewModel = StepCounterViewModel()
 
         if (sensor != null) {
             sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
@@ -51,13 +73,14 @@ class StepCounter : Service(), SensorEventListener {
             println("Sensor not found")
         }
 
+        val intentFilter = IntentFilter(Intent.ACTION_TIME_TICK)
+        registerReceiver(timeReceiver, intentFilter)
+
         sendNotification()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         println("2")
-
-
         return START_STICKY
     }
 
@@ -65,15 +88,15 @@ class StepCounter : Service(), SensorEventListener {
         println("3")
         super.onDestroy()
         sensorManager.unregisterListener(this)
+        unregisterReceiver(timeReceiver)
     }
-
-
 
     override fun onBind(intent: Intent?): IBinder? {
         println("4")
         return null
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     @SuppressLint("SimpleDateFormat")
     override fun onSensorChanged(event: SensorEvent?) {
         println("5")
@@ -120,34 +143,32 @@ class StepCounter : Service(), SensorEventListener {
                     }
                     caloriesBurned = calBurned.await()
 
-                    sharedPreferences = getSharedPreferences("steps_counter", Context.MODE_PRIVATE)
                     sharedPreferences.edit().apply {
                         putInt("steps", steps)
                         putFloat("distance", distance.toFloat())
                         putString("date", date)
                         putFloat("calories", caloriesBurned.toFloat())
+                        putInt("moveMinutes", totalMoveMinutes)
                         apply()
                     }
 
-                    println("steps coroutines $steps, distance $distance, date $date, calories $caloriesBurned")
+                    val moveMinutes = async {
+                        calculateMoveMinutes(steps)
+                    }
+                    moveMinutes.await()
+
+                    println("steps coroutines $steps, distance $distance, date $date, calories $caloriesBurned, moveMinutes $totalMoveMinutes")
+
                     withContext(Dispatchers.Main){
-                        sendBroadcast(applicationContext, steps, distance, date, caloriesBurned)
+                        sendBroadcast(applicationContext, steps, distance, date, caloriesBurned, totalMoveMinutes)
                     }
                 }
             }
 
         }
 
-
     }
 
-    private fun calculateMidNightTime(){
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        val midnight = calendar.timeInMillis
-        println("midnight $midnight")
-    }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
         println("6")
@@ -167,7 +188,7 @@ class StepCounter : Service(), SensorEventListener {
         return caloriesPerKm * distance
     }
 
-    private fun sendBroadcast(context: Context, steps: Int, distance: Double, date: String, caloriesBurned: Double) {
+    private fun sendBroadcast(context: Context, steps: Int, distance: Double, date: String, caloriesBurned: Double, moveMinutes: Int ) {
 
         val intent = Intent("com.example.STEPS_COUNT")
         println("at Send: steps $steps, distance $distance, date $date")
@@ -175,6 +196,7 @@ class StepCounter : Service(), SensorEventListener {
         intent.putExtra("distance", distance)
         intent.putExtra("date", date)
         intent.putExtra("calories", caloriesBurned)
+        intent.putExtra("moveMinutes", moveMinutes)
         LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
         //context.sendBroadcast(intent)
     }
@@ -210,6 +232,86 @@ class StepCounter : Service(), SensorEventListener {
         // Step 4: Start the Service as a Foreground Service
         val notification = notificationBuilder.build()
         startForeground(101, notification)
-
     }
+
+    private fun calculateMoveMinutes(steps: Int) {
+        if (steps > 0) {
+            if (moveStartTime == 0L) {
+                moveStartTime = System.currentTimeMillis()
+            } else {
+                if (moveStartTime != 0L) {
+
+                    println("move start time: $moveStartTime")
+                    val currentTime = System.currentTimeMillis()
+                    val timeDifference = currentTime - moveStartTime
+                    println("time difference: $timeDifference")
+                    if (timeDifference >= MOVE_MINUTES_THRESHOLD) {
+                        totalMoveMinutes += 1
+                        moveStartTime = currentTime
+                        println("move minutes: $totalMoveMinutes")
+                    }
+                    moveStartTime = 0L
+                }
+            }
+        }
+    }
+
+    private fun insertDataIntoDB(){
+        val database = StepsDB.getInstance(applicationContext)
+        val stepsDao = database.stepDao()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            populateDB(StepsDB.getInstance(applicationContext))
+            val steps = stepsDao.getSteps()
+            println("steps: $steps")
+        }
+    }
+
+    private fun resetAllData(){
+        sharedPreferences.edit().apply {
+            putInt("steps", 0)
+            putFloat("distance", 0f)
+            putString("date", "")
+            putFloat("calories", 0f)
+            putInt("moveMinutes", 0)
+            apply()
+        }
+        steps = 0
+        distance = 0.0
+        date = ""
+        caloriesBurned = 0.0
+        totalMoveMinutes = 0
+
+        println("steps of view model${stepViewModel.stepCountLiveData.value}")
+
+        stepViewModel.updateStepCount(steps)
+        stepViewModel.updateDistance(distance)
+        stepViewModel.updateDate(date)
+        stepViewModel.updateCaloriesBurned(caloriesBurned)
+        stepViewModel.updateTotalMoveMinutes(totalMoveMinutes)
+
+
+        sendBroadcast(applicationContext, steps, distance, date, caloriesBurned, totalMoveMinutes)
+    }
+
+    private fun populateDB(db: StepsDB){
+        val stepDao =  db.stepDao()
+        stepDao.insert(Steps(steps, distance, date, caloriesBurned, totalMoveMinutes))
+    }
+
+    private var resetCounter = 0
+    private val timeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            println("time receiver")
+            if (intent?.action == Intent.ACTION_TIME_TICK) {
+                println("time tick")
+                insertDataIntoDB()
+                if (resetCounter < 2){
+                    resetAllData()
+                    resetCounter += 1
+                }
+            }
+        }
+    }
+
 }
